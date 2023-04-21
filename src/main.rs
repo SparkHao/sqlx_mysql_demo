@@ -18,38 +18,45 @@ async fn main() -> Result<(), sqlx::Error> {
         .fetch_all(&pool).await?;
 
     println!("query wallet_info size: {}", rows.len());
-    // for row in rows {
-    //     println!("{:?}", row);
-    // }
 
     let rows: Vec<OrdDomain> = sqlx::query_as(r#"select wallet_id, dom_name, dom_state, inscribe_id, expire_time, create_time from ord_domain"#)
         .fetch_all(&pool).await?;
 
     println!("query OrdDomain size: {}", rows.len());
 
-    let mut res = vec![];
+    let mut magic_res = vec![];
+    let mut collect_res = vec![];
     for row in rows {
         let dom_name = row.dom_name;
         let img_url = format!("https://btcdomains.io/images/domain/{}.jpeg", &dom_name[0..dom_name.len() - 4]);
         if row.dom_state == 0 || row.dom_state == 5 || row.dom_state == 6 {
             let data = Data{
-                id: row.inscribe_id,
+                id: row.inscribe_id.clone(),
                 meta: Meta { 
-                    name: dom_name, 
+                    name: dom_name.clone(), 
                     high_res_img_url: img_url, 
                     attributes: [
                         Attr{
                             trait_type: "register_date".to_string(),
-                            value: row.create_time
+                            value: row.create_time.to_string()
                         },
                         Attr{
                             trait_type: "expire_date".to_string(),
-                            value: row.expire_time
+                            value: row.expire_time.to_string()
                         }
                     ].to_vec()
                 }
             };
-            res.push(data);
+            magic_res.push(data);
+
+            let coll = Data {
+                id: row.inscribe_id,
+                meta: Meta2 {
+                    name: dom_name
+                }
+            };
+
+            collect_res.push(coll);
         }
     }
 
@@ -58,17 +65,28 @@ async fn main() -> Result<(), sqlx::Error> {
         let _ = remove_file(default_path);
     }
     let mut file = std::fs::File::create(default_path).unwrap();
-    let file_data = serde_json::to_vec(&res).unwrap();
+    let file_data = serde_json::to_vec(&magic_res).unwrap();
     let _ = file.write(&file_data);
 
-    println!("finish!! total size: {}", res.len());
+    println!("[magic]finish!! total size: {}", magic_res.len());
+
+    let default_path = "/home/free/data/inscriptions.json";
+    if PathBuf::from(&default_path).exists() {
+        let _ = remove_file(default_path);
+    }
+    let mut file = std::fs::File::create(default_path).unwrap();
+    let file_data = serde_json::to_vec(&collect_res).unwrap();
+    let _ = file.write(&file_data);
+
+    println!("[collect]finish!! total size: {}", collect_res.len());
+
     Ok(())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-struct Data {
+struct Data<T> {
     pub id: String,
-    pub meta: Meta,
+    pub meta: T,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -81,7 +99,7 @@ struct Meta {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Attr {
     pub trait_type: String,
-    pub value: i64,
+    pub value: String,
 }
 
 // #[derive(Serialize, Debug, Clone, sqlx::FromRow)]
@@ -119,4 +137,9 @@ pub struct WalletInfo {
     pub wallet_id: String,
     pub receive_address: String,
     pub create_time: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Meta2 {
+    pub name: String
 }
