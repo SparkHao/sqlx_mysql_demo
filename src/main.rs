@@ -12,14 +12,12 @@ async fn main() -> Result<(), sqlx::Error> {
         .connect("mysql://root:123456@localhost:3306/ord")
         .await?;
     
-    
-    
     let rows = sqlx::query_as::<_, WalletInfo>(r#"select s_id, wallet_id, receive_address, create_time from wallet_info"#)
         .fetch_all(&pool).await?;
 
     println!("query wallet_info size: {}", rows.len());
 
-    let rows: Vec<OrdDomain> = sqlx::query_as(r#"select wallet_id, dom_name, dom_state, inscribe_id, expire_time, create_time from ord_domain"#)
+    let rows: Vec<OrdDomain> = sqlx::query_as(r#"select wallet_id, dom_name, dom_state, inscribe_id, expire_time, create_time from ord_domain order by s_id asc"#)
         .fetch_all(&pool).await?;
 
     println!("query OrdDomain size: {}", rows.len());
