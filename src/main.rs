@@ -22,8 +22,15 @@ async fn main() -> Result<(), sqlx::Error> {
 
     println!("query OrdDomain size: {}", rows.len());
 
+
+    let inscriptions: Vec<DomainInscriptionInfo> = sqlx::query_as(r#"select * from domain_inscription_info order by inscribe_num asc limit 2100"#)
+        .fetch_all(&pool).await?;
+
+    println!("query og size: {}", inscriptions.len());
+
     let mut magic_res = vec![];
     let mut collect_res = vec![];
+    let mut ow_res = vec![];
     for row in rows {
         let dom_name = row.dom_name;
         let img_url = format!("https://btcdomains.io/images/domain/{}.jpeg", &dom_name[0..dom_name.len() - 4]);
@@ -48,13 +55,30 @@ async fn main() -> Result<(), sqlx::Error> {
             magic_res.push(data);
 
             let coll = Data {
-                id: row.inscribe_id,
+                id: row.inscribe_id.clone(),
                 meta: Meta2 {
-                    name: dom_name
+                    name: dom_name.clone()
                 }
             };
-
             collect_res.push(coll);
+            
+            
+            let check_og = check_og_fn(dom_name.clone(), inscriptions.clone());
+            let (status, rank) = if check_og {
+                (format!("OG"), get_len(&dom_name, true))
+            }else {
+                (format!("NonOG"), get_len(&dom_name, false))
+            };
+            let data = Data {
+                id: row.inscribe_id.clone(),
+                meta: MetaOw { 
+                    name: dom_name.clone(), 
+                    status, 
+                    rank,
+                    attributes: vec![],
+                }
+            };
+            ow_res.push(data);
         }
     }
 
@@ -78,7 +102,53 @@ async fn main() -> Result<(), sqlx::Error> {
 
     println!("[collect]finish!! total size: {}", collect_res.len());
 
+
+    let default_path = "/home/free/data/ow/inscriptions.json";
+    if PathBuf::from(&default_path).exists() {
+        let _ = remove_file(default_path);
+    }
+    let mut file = std::fs::File::create(default_path).unwrap();
+    let file_data = serde_json::to_vec(&ow_res).unwrap();
+    let _ = file.write(&file_data);
+
+    println!("[ow]finish!! total size: {}", ow_res.len());
+
     Ok(())
+}
+
+fn check_og_fn(name: String, inscriptions: Vec<DomainInscriptionInfo>) -> bool {
+    for info in inscriptions {
+        if info.domain_name == name {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn get_len(name: &str, og: bool) -> i32{
+    match name.len() {
+        8 => {
+            if og {
+                10
+            }else {
+                11
+            }
+        }
+        9 => {
+            if og {
+                20
+            }else {
+                21
+            }
+        }
+        _ => {
+            if og {
+                30
+            }else {
+                31
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -98,6 +168,14 @@ struct Meta {
 struct Attr {
     pub trait_type: String,
     pub value: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct MetaOw {
+    pub name: String,
+    pub status: String,
+    pub rank: i32,
+    pub attributes: Vec<Attr>,
 }
 
 // #[derive(Serialize, Debug, Clone, sqlx::FromRow)]
@@ -140,4 +218,20 @@ pub struct WalletInfo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Meta2 {
     pub name: String
+}
+
+
+#[derive(Serialize, Deserialize, Debug, sqlx::FromRow, Clone)]
+
+pub struct DomainInscriptionInfo {
+    pub id: i64,
+    pub inscribe_num: i64,
+    pub inscribe_id: String,
+    pub sat: i64,
+    pub domain_name: String,
+    pub address: String,
+    pub create_time: i64,
+    pub update_time: i64,
+    pub expire_date: i64,
+    pub register_date: i64,
 }
